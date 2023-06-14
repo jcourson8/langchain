@@ -94,44 +94,41 @@ class _SchemaConfig:
     arbitrary_types_allowed = True
 
 
-def create_schema_from_function(
-    model_name: str,
-    func: Callable[..., Any]
-) -> Type[BaseModel]:
-    """Create a Pydantic schema from a function's signature.
+def create_schema_from_function(model_name: str, func: Callable) -> Type[BaseModel]:
+    """Create a pydantic schema from a function's signature.
     Args:
-        model_name: The name for the schema model.
-        func: The function from which to create the schema.
+        model_name: Name to assign to the generated pydantic schema
+        func: Function to generate the schema from
     Returns:
-        The Pydantic schema model.
+        A pydantic model with the same arguments as the function
     """
-    # Get the annotations of the function's parameters.
+    # get the docstring and split into lines
+    docstring = inspect.getdoc(func)
+    if docstring:
+        docstring_lines = docstring.split("\n")
+    else:
+        docstring_lines = []
+    
     annotations = func.__annotations__
-
-    # Parse the docstring to get argument descriptions
-    docstring = parse(func.__doc__)
-    param_descriptions = {param.arg_name: param.description for param in docstring.params}
-
-    # Create a dictionary to store the fields of the model.
     model_fields = {}
 
-    # Iterate over the annotations, adding each as a field to the model.
-    for name, annotation in annotations.items():
-        description = param_descriptions.get(name, None)
-        default = None if description else ...
+    for param, ann in annotations.items():
+        # attempt to extract parameter descriptions from the docstring
+        description = None
+        for line in docstring_lines:
+            if line.lstrip().startswith(param):
+                _, description = line.split(":")
+                break
 
-        # Check if the annotation is an Enum.
-        if issubclass(annotation, Enum):
-            # If it is, use the Enum's values as the options for the field.
-            enum_values = [e.value for e in annotation]
-            field = (annotation, Field(default, description=description, enum=enum_values))
+        # if it's an enum, get the possible values
+        if isinstance(ann, enum.EnumMeta):
+            enum_values = [e.value for e in ann]
+            field_info = Field(description=description, enum=enum_values)
+            model_fields[param] = (ann, field_info)
         else:
-            # Otherwise, just use the annotation as the field's type.
-            field = (annotation, Field(default, description=description))
+            field_info = Field(description=description)
+            model_fields[param] = (ann, field_info)
 
-        model_fields[name] = field
-
-    # Create and return the model.
     return create_model(model_name, **model_fields)
 
 
