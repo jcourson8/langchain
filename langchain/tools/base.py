@@ -5,6 +5,8 @@ import warnings
 from abc import ABC, abstractmethod
 from inspect import signature
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Type, Union
+from enum import Enum
+from docstring_parser import parse
 
 from pydantic import (
     BaseModel,
@@ -94,25 +96,45 @@ class _SchemaConfig:
 
 def create_schema_from_function(
     model_name: str,
-    func: Callable,
+    func: Callable[..., Any]
 ) -> Type[BaseModel]:
-    """Create a pydantic schema from a function's signature.
+    """Create a Pydantic schema from a function's signature.
+
     Args:
-        model_name: Name to assign to the generated pydandic schema
-        func: Function to generate the schema from
+        model_name: The name for the schema model.
+        func: The function from which to create the schema.
+
     Returns:
-        A pydantic model with the same arguments as the function
+        The Pydantic schema model.
     """
-    # https://docs.pydantic.dev/latest/usage/validation_decorator/
-    validated = validate_arguments(func, config=_SchemaConfig)  # type: ignore
-    inferred_model = validated.model  # type: ignore
-    if "run_manager" in inferred_model.__fields__:
-        del inferred_model.__fields__["run_manager"]
-    # Pydantic adds placeholder virtual fields we need to strip
-    valid_properties = _get_filtered_args(inferred_model, func)
-    return _create_subset_model(
-        f"{model_name}Schema", inferred_model, list(valid_properties)
-    )
+    # Get the annotations of the function's parameters.
+    annotations = func.__annotations__
+    
+    # Parse the docstring to get argument descriptions
+    docstring = parse(func.__doc__)
+    param_descriptions = {param.arg_name: param.description for param in docstring.params}
+
+    # Create a dictionary to store the fields of the model.
+    model_fields = {}
+
+    # Iterate over the annotations, adding each as a field to the model.
+    for name, annotation in annotations.items():
+        description = param_descriptions.get(name, None)
+        default = Field(..., description=description) if description else Field(...)
+
+        # Check if the annotation is an Enum.
+        if issubclass(annotation, Enum):
+            # If it is, use the Enum's values as the options for the field.
+            enum_values = [e.value for e in annotation]
+            field = (annotation, default, {"enum": enum_values})
+        else:
+            # Otherwise, just use the annotation as the field's type.
+            field = (annotation, default)
+
+        model_fields[name] = field
+
+    # Create and return the model.
+    return create_model(model_name, **model_fields)
 
 
 class ToolException(Exception):
