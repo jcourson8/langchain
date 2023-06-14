@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import warnings
+import inspect
 from abc import ABC, abstractmethod
 from inspect import signature
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Type, Union
