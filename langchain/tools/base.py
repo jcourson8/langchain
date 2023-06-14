@@ -99,17 +99,15 @@ def create_schema_from_function(
     func: Callable[..., Any]
 ) -> Type[BaseModel]:
     """Create a Pydantic schema from a function's signature.
-
     Args:
         model_name: The name for the schema model.
         func: The function from which to create the schema.
-
     Returns:
         The Pydantic schema model.
     """
     # Get the annotations of the function's parameters.
     annotations = func.__annotations__
-    
+
     # Parse the docstring to get argument descriptions
     docstring = parse(func.__doc__)
     param_descriptions = {param.arg_name: param.description for param in docstring.params}
@@ -120,21 +118,22 @@ def create_schema_from_function(
     # Iterate over the annotations, adding each as a field to the model.
     for name, annotation in annotations.items():
         description = param_descriptions.get(name, None)
-        default = Field(..., description=description) if description else Field(...)
+        default = None if description else ...
 
         # Check if the annotation is an Enum.
         if issubclass(annotation, Enum):
             # If it is, use the Enum's values as the options for the field.
             enum_values = [e.value for e in annotation]
-            field = (annotation, default, {"enum": enum_values})
+            field = (annotation, Field(default, description=description, enum=enum_values))
         else:
             # Otherwise, just use the annotation as the field's type.
-            field = (annotation, default)
+            field = (annotation, Field(default, description=description))
 
         model_fields[name] = field
 
     # Create and return the model.
     return create_model(model_name, **model_fields)
+
 
 
 class ToolException(Exception):
